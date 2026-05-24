@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>快递运单号查询</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif}
+body{background:#fff;color:#333}
+.header{text-align:center;padding:20px 0;font-size:20px;font-weight:500;border-bottom:1px solid #eee}
+.container{max-width:90%;margin:30px auto}
+.btn-change{display:block;margin:0 auto 30px;padding:12px 30px;border:1px solid #333;border-radius:30px;background:#fff;font-size:16px;cursor:pointer}
+.result-card{border:1px solid #eee;border-radius:12px;overflow:hidden;display:none}
+.card-header{display:flex;justify-content:space-between;padding:20px;border-bottom:1px solid #eee}
+.card-body{padding:20px}
+.card-row{display:flex;justify-content:space-between;align-items:center;margin:15px 0}
+.btn-logistics{padding:10px 25px;border:1px solid #40b8d0;color:#40b8d0;border-radius:20px;background:#fff;font-size:14px;cursor:pointer}
+.btn-copy{padding:10px 25px;background:#40b8d0;color:#fff;border:none;border-radius:20px;font-size:14px;cursor:pointer}
+.input-box{width:100%;height:50px;border:1px solid #ddd;border-radius:8px;padding:0 15px;font-size:16px;outline:none}
+.btn-search{width:100%;height:50px;background:#40b8d0;color:#fff;border:none;border-radius:8px;font-size:17px;margin-top:20px;cursor:pointer}
+.error-tip{color:red;text-align:center;margin-top:20px;display:none;text-align:center}
+</style>
+</head>
+<body>
+<div class="header">快递运单号查询</div>
+<div class="container">
+    <div id="searchForm">
+        <input class="input-box" id="phone4" placeholder="请输入收货手机号后四位" maxlength="4">
+        <button class="btn-search" onclick="searchLog()">立即查询</button>
+    </div>
+
+    <button class="btn-change" id="changeBtn" style="display:none" onclick="showSearch()">更换手机号查询</button>
+
+    <div class="result-card" id="resultCard">
+        <div class="card-header">
+            <span>收货人手机号：<span id="phoneMask"></span></span>
+            <span id="date"></span>
+        </div>
+        <div class="card-body">
+            <div class="card-row">
+                <span>收货地址：<span id="addressMask"></span></span>
+                <button class="btn-logistics" id="viewLogistics">查看物流</button>
+            </div>
+            <div class="card-row">
+                <span>快递单号：<span id="trackingNum"></span></span>
+                <button class="btn-copy" onclick="copyNum()">复制</button>
+            </div>
+        </div>
+    </div>
+
+    <p class="error-tip" id="errorTip">暂无该手机号对应的物流单号，请联系商家核对</p>
+</div>
+
+<script>
+let currentTrackingNum = "";
+let userIp = "";
+
+async function getVisitorIP(){
+  try{
+    let res = await fetch("https://api.ipify.org?format=json");
+    let json = await res.json();
+    userIp = json.ip;
+  }catch(e){
+    userIp = "未知IP";
+  }
+}
+getVisitorIP();
+
+function getDeviceType(){
+  let ua = navigator.userAgent.toLowerCase();
+  if(/android/.test(ua)) return "安卓手机";
+  if(/iphone|ipad/.test(ua)) return "苹果设备";
+  if(/windows/.test(ua)) return "电脑Windows";
+  if(/mac/.test(ua)) return "电脑Mac";
+  return "其他设备";
+}
+
+function getNowTime(){
+  let d = new Date();
+  return d.toLocaleString();
+}
+
+async function saveSearchLog(phone4){
+  let logData = {
+    ip: userIp,
+    device: getDeviceType(),
+    time: getNowTime(),
+    phoneLast4: phone4
+  };
+  await fetch("/api/data?type=log",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(logData)
+  })
+}
+
+async function getAllData(){
+    let res = await fetch('/api/data?type=order');
+    return await res.json();
+}
+
+function showSearch(){
+    document.getElementById('searchForm').style.display = 'block';
+    document.getElementById('changeBtn').style.display = 'none';
+    document.getElementById('resultCard').style.display = 'none';
+    document.getElementById('errorTip').style.display = 'none';
+    document.getElementById('phone4').value = '';
+}
+
+async function searchLog(){
+    let phone = document.getElementById('phone4').value.trim();
+    if(phone.length !== 4){
+        alert('请输入正确的4位手机号尾数');
+        return;
+    }
+    saveSearchLog(phone);
+    let list = await getAllData();
+    let data = list.find(item => item.phone === phone);
+
+    if(!data){
+        document.getElementById('errorTip').style.display = 'block';
+        document.getElementById('resultCard').style.display = 'none';
+        document.getElementById('changeBtn').style.display = 'block';
+        document.getElementById('searchForm').style.display = 'none';
+        return;
+    }
+
+    document.getElementById('phoneMask').innerText = `${data.fullPhone.slice(0,3)}****${data.fullPhone.slice(-4)}`;
+    document.getElementById('addressMask').innerText = data.address;
+    document.getElementById('trackingNum').innerText = data.tracking;
+    document.getElementById('date').innerText = data.date;
+    currentTrackingNum = data.tracking;
+
+    document.getElementById('searchForm').style.display = 'none';
+    document.getElementById('errorTip').style.display = 'none';
+    document.getElementById('resultCard').style.display = 'block';
+    document.getElementById('changeBtn').style.display = 'block';
+}
+
+function copyNum(){
+    navigator.clipboard.writeText(currentTrackingNum).then(()=>{
+        alert('复制成功！');
+    }).catch(()=>{
+        alert('复制失败，请手动复制单号');
+    });
+}
+
+document.getElementById('viewLogistics').onclick = function(){
+    if(currentTrackingNum){
+        window.open('https://m.kuaidi100.com/result.jsp?nu=' + currentTrackingNum, '_blank');
+    }
+};
+</script>
+</body>
+</html>
