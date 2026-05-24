@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>商家物流管理后台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:微软雅黑}
+body{background:#f4f7fa}
+.wrap{max-width:750px;margin:50px auto;padding:0 20px}
+.box{background:#fff;padding:30px;border-radius:10px;box-shadow:0 2px 15px #eee;margin-bottom:20px}
+h2{text-align:center;margin-bottom:25px;color:#222}
+h3{margin:15px 0;color:#40b8d0}
+.line{display:flex;gap:12px;margin-bottom:15px;flex-wrap:wrap}
+.line input{flex:1;height:45px;padding:0 12px;border:1px solid #ddd;border-radius:6px;font-size:15px;min-width:120px}
+.add-btn{padding:0 20px;background:#40b8d0;color:#fff;border:none;border-radius:6px;cursor:pointer}
+.del-btn{background:#f53f3f;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer}
+.clear-log{background:#ff9500;color:#fff;border:none;padding:6px 15px;border-radius:4px;cursor:pointer}
+.list-item{padding:12px 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+.log-item{padding:10px;border-bottom:1px solid #eee;font-size:14px;line-height:1.6}
+.login-input{width:100%;height:45px;padding:0 15px;border:1px solid #ddd;border-radius:6px;margin-bottom:15px}
+.login-btn{width:100%;height:45px;background:#40b8d0;color:#fff;border:none;border-radius:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+    <div class="box" id="loginPage">
+        <h2>商家后台登录</h2>
+        <input class="login-input" type="password" id="adminPwd" placeholder="请输入后台管理密码">
+        <button class="login-btn" onclick="adminLogin()">登录后台</button>
+    </div>
+
+    <div id="adminPage" style="display:none">
+        <div class="box">
+            <h2>添加物流订单</h2>
+            <div class="line">
+                <input type="text" id="fullPhone" placeholder="完整手机号（例：19012348211）">
+                <input type="text" id="address" placeholder="收货地址（例：山东****）">
+            </div>
+            <div class="line">
+                <input type="text" id="trackingNum" placeholder="物流单号">
+                <input type="date" id="date">
+                <button class="add-btn" onclick="addOrder()">添加录入</button>
+            </div>
+        </div>
+
+        <div class="box">
+            <h2>已录入全部订单</h2>
+            <div id="orderList"></div>
+        </div>
+
+        <div class="box">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+                <h3>访客查询记录日志</h3>
+                <button class="clear-log" onclick="clearAllLog()">清空全部日志</button>
+            </div>
+            <div id="logList"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const ADMIN_PWD = '888888';
+let orderList = [];
+let logList = [];
+
+window.onload = function(){
+    let loginState = localStorage.getItem("adminLoginState");
+    if(loginState === "ok"){
+        document.getElementById("loginPage").style.display = "none";
+        document.getElementById("adminPage").style.display = "block";
+        loadAllData();
+    }
+}
+
+function adminLogin(){
+    let pwd = document.getElementById("adminPwd").value.trim();
+    if(pwd !== ADMIN_PWD){
+        alert("密码错误！");
+        return;
+    }
+    localStorage.setItem("adminLoginState","ok");
+    document.getElementById("loginPage").style.display = "none";
+    document.getElementById("adminPage").style.display = "block";
+    loadAllData();
+}
+
+async function loadAllData(){
+    await loadOrderData();
+    await loadSearchLog();
+}
+
+async function loadOrderData(){
+    let res = await fetch('/api/data?type=order');
+    orderList = await res.json();
+    renderList();
+}
+
+async function loadSearchLog(){
+    let res = await fetch("/api/data?type=log");
+    logList = await res.json();
+    renderLog();
+}
+
+function renderList(){
+    let html = '';
+    orderList.forEach((item,index)=>{
+        html += `
+            <div class="list-item">
+                <span>${item.fullPhone.slice(0,3)}****${item.fullPhone.slice(-4)} | ${item.address} | ${item.tracking} | ${item.date}</span>
+                <button class="del-btn" onclick="delOrder(${index})">删除</button>
+            </div>
+        `;
+    })
+    document.getElementById('orderList').innerHTML = html || '<p>暂无录入订单</p>';
+}
+
+function renderLog(){
+  let html = "";
+  if(logList.length === 0){
+    html = "<p>暂无访客查询记录</p>";
+  }else{
+    logList.forEach(item=>{
+      html += `
+      <div class="log-item">
+        查询时间：${item.time}<br>
+        访客IP：${item.ip}<br>
+        访问设备：${item.device}<br>
+        查询手机号尾号：${item.phoneLast4}
+      </div>
+      `
+    })
+  }
+  document.getElementById("logList").innerHTML = html;
+}
+
+async function clearAllLog(){
+  if(!confirm("确定清空所有访客查询日志？"))return;
+  await fetch('/api/data?type=clearlog',{method:'POST'});
+  loadSearchLog();
+}
+
+async function saveCloudData(){
+    await fetch('/api/data?type=order',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(orderList)
+    })
+}
+
+async function addOrder(){
+    let fullPhone = document.getElementById('fullPhone').value.trim();
+    let address = document.getElementById('address').value.trim();
+    let track = document.getElementById('trackingNum').value.trim();
+    let date = document.getElementById('date').value;
+
+    if(fullPhone.length !== 11 || !address || !track || !date){
+        alert('请填写完整信息！');
+        return;
+    }
+
+    let phone4 = fullPhone.slice(-4);
+    orderList.push({
+        phone: phone4,
+        fullPhone: fullPhone,
+        address: address,
+        tracking: track,
+        date: date
+    });
+
+    await saveCloudData();
+    renderList();
+    document.getElementById('fullPhone').value = '';
+    document.getElementById('address').value = '';
+    document.getElementById('trackingNum').value = '';
+    document.getElementById('date').value = '';
+    alert('录入成功！');
+}
+
+async function delOrder(idx){
+    if(!confirm('确定删除该订单？'))return;
+    orderList.splice(idx,1);
+    await saveCloudData();
+    renderList();
+}
+</script>
+</body>
+</html>
